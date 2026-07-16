@@ -1,0 +1,1449 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SheilerPark - Parqueadero Inteligente</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap');
+
+        :root {
+            --primary: #14b8a6;   /* teal */
+            --primary-dark: #0d9488;
+            --accent: #fb923c;    /* orange */
+            --sun: #fbbf24;       /* amber */
+            --bg: #0f1729;        /* fondo oscuro */
+            --bg-soft: #1a2438;   /* paneles */
+            --bg-input: #223049;
+            --border: #2b3a56;
+            --text: #e7ecf5;
+            --muted: #93a1bd;
+        }
+
+        * { font-family: 'Poppins', sans-serif; }
+
+        body {
+            background-color: var(--bg);
+            background-image:
+                radial-gradient(circle at 10% 12%, rgba(20, 184, 166, 0.14) 0%, transparent 38%),
+                radial-gradient(circle at 90% 88%, rgba(251, 146, 60, 0.12) 0%, transparent 38%);
+            color: var(--text);
+            margin: 0;
+            min-height: 100vh;
+        }
+
+        .card {
+            background: var(--bg-soft);
+            border-radius: 24px;
+            border: 1px solid var(--border);
+            box-shadow: 0 24px 50px -24px rgba(0, 0, 0, 0.7);
+        }
+
+        .soft-panel {
+            background: var(--bg-soft);
+            border-radius: 24px;
+            border: 1px solid var(--border);
+            box-shadow: 0 14px 34px -22px rgba(0, 0, 0, 0.6);
+        }
+
+        .hide { display: none !important; }
+
+        /* Celdas del mapa de parqueo */
+        .slot {
+            position: relative;
+            transition: transform 0.18s, box-shadow 0.18s;
+            border-radius: 16px;
+            border: 2px solid transparent;
+        }
+        .slot:hover { transform: translateY(-3px); box-shadow: 0 12px 22px -8px rgba(0,0,0,0.6); }
+
+        .slot-free  { background: rgba(16,185,129,0.14); border-color: rgba(52,211,153,0.55); color: #6ee7b7; }
+        .slot-busy  { background: rgba(239,68,68,0.14);  border-color: rgba(248,113,113,0.55); color: #fca5a5; }
+        .slot-res   { background: rgba(245,158,11,0.14);  border-color: rgba(251,191,36,0.6);  color: #fcd34d; }
+        .slot-maint { background: rgba(148,163,184,0.1);  border-color: rgba(148,163,184,0.35); color: #94a3b8; opacity: 0.6; cursor: not-allowed; }
+
+        .btn-primary {
+            background: var(--primary);
+            color: #06231f;
+            border-radius: 14px;
+            font-weight: 700;
+            transition: 0.2s;
+            box-shadow: 0 12px 24px -12px rgba(20, 184, 166, 0.9);
+        }
+        .btn-primary:hover { background: #2dd4bf; transform: translateY(-2px); }
+
+        .btn-accent {
+            background: var(--accent);
+            color: #2a1405;
+            border-radius: 14px;
+            font-weight: 700;
+            transition: 0.2s;
+            box-shadow: 0 12px 24px -12px rgba(251, 146, 60, 0.9);
+        }
+        .btn-accent:hover { filter: brightness(1.05); transform: translateY(-2px); }
+
+        .input-soft {
+            background: var(--bg-input);
+            border: 2px solid var(--border);
+            border-radius: 14px;
+            color: var(--text);
+            outline: none;
+            transition: 0.2s;
+        }
+        .input-soft::placeholder { color: #64748b; }
+        .input-soft:focus { border-color: var(--primary); background: #26364f; }
+
+        .nav-link {
+            border-radius: 14px;
+            transition: 0.2s;
+            color: var(--muted);
+        }
+        .nav-link:hover { background: rgba(20,184,166,0.12); color: #5eead4; }
+
+        /* burbujas decorativas del login */
+        .blob { position: absolute; border-radius: 50%; filter: blur(30px); opacity: 0.35; }
+
+        /* animaciones */
+        @keyframes pop { 0% { transform: scale(0.9); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+        @keyframes slideDown { 0% { transform: translate(-50%, -20px); opacity: 0; } 100% { transform: translate(-50%, 0); opacity: 1; } }
+        .animate-pop { animation: pop 0.25s ease-out; }
+        .toast-in { animation: slideDown 0.3s ease-out; }
+        .progress-bar { transition: width 0.6s ease; }
+    </style>
+</head>
+<body>
+
+    <div id="toast" class="fixed top-8 left-1/2 -translate-x-1/2 z-[1000] px-8 py-4 bg-[#1a2438] text-teal-300 shadow-2xl hide font-semibold text-sm rounded-2xl border-l-4 border-teal-400"></div>
+
+    <!-- PANTALLA INICIAL -->
+    <div id="screen-auth" class="fixed inset-0 z-[400] flex items-center justify-center p-6">
+        <div class="w-full max-w-5xl flex flex-col md:flex-row gap-8 items-stretch">
+
+            <!-- TARJETA DE INFORMACIÓN -->
+            <div class="card w-full md:w-1/2 p-12 flex flex-col justify-center space-y-10 relative overflow-hidden">
+                <div class="blob w-52 h-52 bg-teal-400 -top-10 -right-10"></div>
+                <div class="blob w-40 h-40 bg-orange-400 -bottom-10 -left-10"></div>
+                <div class="relative">
+                    <div class="inline-flex items-center gap-3 bg-teal-500/15 text-teal-300 px-4 py-2 rounded-full text-xs font-semibold mb-8">
+                        <i class="fas fa-car-side"></i> Tu parqueadero de confianza
+                    </div>
+                </div>
+
+                <div class="flex items-start gap-5 relative">
+                    <div class="w-12 h-12 rounded-2xl bg-teal-500/15 text-teal-300 flex items-center justify-center text-lg"><i class="fas fa-phone-alt"></i></div>
+                    <div>
+                        <h4 class="font-semibold text-white mb-1">Llámanos</h4>
+                        <p class="text-slate-400 text-sm">1 (234) 567-891, 1 (234) 987-654</p>
+                    </div>
+                </div>
+
+                <div class="flex items-start gap-5 relative">
+                    <div class="w-12 h-12 rounded-2xl bg-orange-500/15 text-orange-300 flex items-center justify-center text-lg"><i class="fas fa-map-marker-alt"></i></div>
+                    <div>
+                        <h4 class="font-semibold text-white mb-1">Ubicación</h4>
+                        <p class="text-slate-400 text-sm">Av. Tech 121, Distrito Financiero<br>Cali, Colombia</p>
+                    </div>
+                </div>
+
+                <div class="flex items-start gap-5 relative">
+                    <div class="w-12 h-12 rounded-2xl bg-amber-500/15 text-amber-300 flex items-center justify-center text-lg"><i class="fas fa-clock"></i></div>
+                    <div>
+                        <h4 class="font-semibold text-white mb-1">Horario de atención</h4>
+                        <p class="text-slate-400 text-sm">Lun - Vie&nbsp;&nbsp;·&nbsp;&nbsp;10 am - 8 pm<br>Sáb, Dom&nbsp;&nbsp;·&nbsp;&nbsp;Cerrado</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TARJETA DE LOGIN -->
+            <div class="soft-panel w-full md:w-1/2 p-12 flex flex-col justify-center">
+                <div class="mb-8">
+                    <h1 class="text-4xl font-extrabold tracking-tight text-white">Sheiler<span class="text-teal-400">Park</span></h1>
+                    <p class="text-slate-400 text-sm mt-1">Bienvenido de nuevo, ingresa a tu cuenta</p>
+                </div>
+
+                <div class="space-y-4 mb-5">
+                    <div>
+                        <label class="text-xs font-semibold text-slate-400 mb-1 block ml-1">Usuario</label>
+                        <input type="text" id="login-user" placeholder="Tu nombre de usuario" class="input-soft w-full p-4 text-sm">
+                    </div>
+                    <div>
+                        <label class="text-xs font-semibold text-slate-400 mb-1 block ml-1">Contraseña</label>
+                        <input type="password" id="login-pass" placeholder="Mínimo 8 caracteres" class="input-soft w-full p-4 text-sm" onkeydown="if(event.key==='Enter')enterAs('Cliente')">
+                        <p id="login-error" class="hide text-[11px] font-semibold text-red-400 mt-2 ml-1"></p>
+                    </div>
+                </div>
+
+                <div class="flex justify-between mb-8 text-xs font-semibold">
+                    <button class="text-teal-400 hover:text-teal-300">Crear cuenta nueva</button>
+                    <button onclick="toast('Te enviaremos un enlace de recuperación a tu correo')" class="text-slate-500 hover:text-slate-300">¿Olvidaste tu acceso?</button>
+                </div>
+
+                <button onclick="enterAs('Cliente')" class="btn-primary w-full p-4 mb-4 text-sm">
+                    <i class="fas fa-user mr-2"></i> Ingresar como Cliente
+                </button>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <button onclick="enterAs('Operador')" class="p-3 rounded-xl border-2 border-[#2b3a56] text-xs font-semibold text-slate-300 hover:border-teal-400 hover:text-teal-300 transition">
+                        <i class="fas fa-headset mr-1"></i> Operador
+                    </button>
+                    <button onclick="enterAs('Admin')" class="p-3 rounded-xl border-2 border-[#2b3a56] text-xs font-semibold text-slate-300 hover:border-orange-400 hover:text-orange-300 transition">
+                        <i class="fas fa-user-shield mr-1"></i> Admin
+                    </button>
+                </div>
+                <button onclick="resetAll()" class="mt-8 text-[11px] text-slate-600 hover:text-red-400 transition font-semibold text-center">Reiniciar sistema</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- APP PRINCIPAL -->
+    <div id="app" class="hide flex h-screen overflow-hidden">
+
+        <!-- SIDEBAR -->
+        <aside id="side-staff" class="w-72 bg-[#131c2e] border-r border-[#2b3a56] flex flex-col hide">
+            <div class="p-8">
+                <h1 class="text-2xl font-extrabold tracking-tight text-white mb-1">Sheiler<span class="text-teal-400">Park</span></h1>
+                <div class="text-slate-500 text-xs font-medium mb-10">Panel de control</div>
+                <nav id="nav-staff" class="space-y-2"></nav>
+            </div>
+            <div class="mt-auto p-8">
+                <button onclick="exitToAuth()" class="w-full p-4 rounded-xl bg-red-500/10 text-red-400 text-sm font-semibold hover:bg-red-500 hover:text-white transition">
+                    <i class="fas fa-right-from-bracket mr-2"></i> Cerrar sesión
+                </button>
+            </div>
+        </aside>
+
+        <main class="flex-1 overflow-y-auto p-8 md:p-12">
+            <!-- VISTA CLIENTE -->
+            <div id="view-customer" class="max-w-5xl mx-auto hide">
+                <header class="flex justify-between items-center mb-10 pb-8 border-b border-[#2b3a56]">
+                    <div>
+                        <h2 class="text-3xl md:text-4xl font-extrabold tracking-tight text-white">¡Hola, <span id="display-name" class="text-teal-400">usuario</span>!</h2>
+                        <p class="text-slate-400 text-sm mt-1"><i class="fas fa-location-dot text-orange-400 mr-1"></i> Estación activa: Cali Norte</p>
+                    </div>
+                    <button onclick="exitToAuth()" class="w-11 h-11 rounded-full bg-[#223049] text-slate-400 hover:bg-red-500/20 hover:text-red-400 transition flex items-center justify-center"><i class="fas fa-times"></i></button>
+                </header>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+                    <div class="soft-panel p-8 md:col-span-2">
+                        <h4 class="text-sm font-semibold text-slate-200 mb-1"><i class="fas fa-car text-teal-400 mr-2"></i>Mis vehículos</h4>
+                        <p class="text-xs text-slate-500 mb-5">Registra tus vehículos con placa, color y tipo</p>
+                        <div id="cust-vehicles" class="flex flex-wrap gap-3 mb-5"></div>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            <input type="text" id="cust-new-plate" placeholder="Placa" class="input-soft p-3 text-sm font-semibold uppercase col-span-2 sm:col-span-1">
+                            <input type="text" id="cust-new-color" placeholder="Color" class="input-soft p-3 text-sm">
+                            <select id="cust-new-type" class="input-soft p-3 text-sm">
+                                <option value="auto">Automóvil</option>
+                                <option value="moto">Moto</option>
+                            </select>
+                            <button onclick="custAddCar()" class="btn-primary p-3 text-sm">Agregar</button>
+                        </div>
+                    </div>
+
+                    <div class="soft-panel p-8">
+                        <h4 class="text-sm font-semibold text-slate-200 mb-1"><i class="fas fa-magnifying-glass text-orange-400 mr-2"></i>Consultar estado</h4>
+                        <p class="text-xs text-slate-500 mb-5">Busca por placa</p>
+                        <input type="text" id="search-plate" placeholder="Placa" class="input-soft w-full p-4 mb-4 text-sm uppercase">
+                        <button onclick="custSearchRes()" class="btn-accent w-full p-3 text-sm">Consultar</button>
+                        <div id="search-res-info" class="mt-5 text-sm font-medium text-slate-300 hide bg-[#223049] rounded-xl p-4"></div>
+                    </div>
+                </div>
+
+                <!-- RESERVA / VEHÍCULO ACTIVO DEL CLIENTE -->
+                <div id="cust-res-panel" class="card p-8 mb-10 flex flex-col sm:flex-row gap-4 justify-between items-center hide">
+                    <div>
+                        <p id="cust-res-tag" class="text-xs font-semibold uppercase text-amber-400 tracking-wide mb-1"><i class="fas fa-circle-check mr-1"></i>Reserva activa</p>
+                        <h3 id="cust-res-summary" class="text-xl font-bold text-white">---</h3>
+                        <p id="cust-res-detail" class="text-sm text-slate-400 mt-1"></p>
+                    </div>
+                    <div class="flex gap-3">
+                        <button id="cust-checkin-btn" onclick="custCheckIn()" class="btn-primary px-6 py-3 text-sm hide">Confirmar llegada</button>
+                        <button id="cust-cancel-btn" onclick="custCanRes()" class="bg-red-500 text-white px-6 py-3 rounded-xl font-semibold text-sm hover:bg-red-600 transition">Cancelar</button>
+                    </div>
+                </div>
+
+                <div class="soft-panel p-8 md:p-10 mb-10">
+                    <div class="flex flex-wrap gap-4 justify-between items-center mb-8">
+                        <h3 class="text-lg font-bold text-white">Mapa del parqueadero</h3>
+                        <div class="flex flex-wrap gap-4 text-xs font-medium text-slate-400">
+                            <span class="flex items-center gap-2"><span class="w-3 h-3 rounded-md bg-emerald-400"></span> Libre</span>
+                            <span class="flex items-center gap-2"><span class="w-3 h-3 rounded-md bg-red-400"></span> Ocupado</span>
+                            <span class="flex items-center gap-2"><span class="w-3 h-3 rounded-md bg-amber-400"></span> Reservado</span>
+                        </div>
+                    </div>
+                    <div id="map-customer" class="grid grid-cols-4 sm:grid-cols-8 md:grid-cols-10 gap-3"></div>
+                </div>
+
+                <!-- HISTORIAL DEL CLIENTE -->
+                <div class="soft-panel p-8 md:p-10">
+                    <h3 class="text-lg font-bold text-white mb-1"><i class="fas fa-clock-rotate-left text-teal-400 mr-2"></i>Mi historial de reservas y pagos</h3>
+                    <p class="text-xs text-slate-500 mb-6">Actividad reciente de tus vehículos</p>
+                    <div id="cust-history" class="space-y-2"></div>
+                </div>
+            </div>
+
+            <!-- VISTA STAFF -->
+            <div id="view-staff" class="hide">
+                <header class="flex flex-wrap gap-4 justify-between items-center mb-10">
+                    <div>
+                        <h2 id="staff-title" class="text-3xl md:text-4xl font-extrabold tracking-tight text-white">Panel</h2>
+                        <p class="text-slate-400 text-sm mt-1">Gestión en tiempo real</p>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div class="text-right bg-[#1a2438] rounded-2xl px-6 py-3 shadow-sm border border-[#2b3a56]">
+                            <div class="text-2xl font-bold text-teal-400" id="clock">00:00:00</div>
+                            <div class="text-xs font-medium text-slate-500">Sincronizado</div>
+                        </div>
+                        <button onclick="exitToAuth()" class="flex items-center gap-2 px-5 py-3 rounded-2xl bg-red-500/10 text-red-400 text-sm font-semibold hover:bg-red-500 hover:text-white transition">
+                            <i class="fas fa-right-from-bracket"></i> Cerrar sesión
+                        </button>
+                    </div>
+                </header>
+                <div id="staff-content"></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- MODAL RESERVA -->
+    <div id="modal-reserve" class="fixed inset-0 z-[600] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6 hide">
+        <div class="card w-full max-w-md overflow-hidden animate-pop">
+            <div class="bg-gradient-to-r from-teal-600 to-teal-500 p-8 text-white">
+                <p class="text-xs font-semibold uppercase tracking-wide opacity-80 mb-1">Nueva reserva</p>
+                <h3 class="text-3xl font-extrabold">Espacio <span id="modal-slot-id">--</span></h3>
+            </div>
+            <div class="p-8 space-y-6">
+                <div>
+                    <label class="text-xs font-semibold uppercase text-slate-400 mb-2 block">Vehículo</label>
+                    <select id="modal-plate-sel" onchange="calcModalTotal()" class="input-soft w-full p-4 font-semibold text-lg"></select>
+                </div>
+                <div>
+                    <label class="text-xs font-semibold uppercase text-slate-400 mb-2 block">Horas de reserva</label>
+                    <input type="number" id="modal-hours-in" value="1" min="1" oninput="calcModalTotal()" class="input-soft w-full p-4 font-semibold text-center">
+                </div>
+                <div class="p-6 bg-teal-500/10 rounded-2xl text-center border border-teal-500/20">
+                    <p class="text-xs font-semibold text-teal-400 uppercase mb-1">Costo estimado</p>
+                    <h4 id="modal-total-display" class="text-3xl font-extrabold text-teal-300">$0 <span class="text-sm font-medium">COP</span></h4>
+                    <p class="text-[11px] text-slate-400 mt-2"><i class="fas fa-triangle-exclamation text-amber-400 mr-1"></i>Tienes 15 min para confirmar tu llegada.</p>
+                </div>
+                <div class="grid grid-cols-1 gap-3">
+                    <button onclick="custConfirmBooking()" class="btn-primary w-full p-4 text-sm"><i class="fas fa-clock mr-1"></i> Reservar y pagar al salir</button>
+                    <button onclick="openPrepay()" class="btn-accent w-full p-4 text-sm"><i class="fas fa-bolt mr-1"></i> Reservar y pagar ahora</button>
+                </div>
+                <button onclick="closeModal()" class="w-full text-xs font-semibold text-slate-500 hover:text-teal-400 mt-1">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL RECIBO / COBRO -->
+    <div id="modal-receipt" class="fixed inset-0 z-[700] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6 hide">
+        <div class="card w-full max-w-sm overflow-hidden animate-pop text-center">
+            <div class="bg-gradient-to-r from-emerald-600 to-teal-500 p-8 text-white">
+                <div class="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center text-2xl mx-auto mb-3"><i class="fas fa-receipt"></i></div>
+                <h3 class="text-xl font-extrabold">Comprobante de salida</h3>
+            </div>
+            <div class="p-8 space-y-3 text-sm">
+                <div class="flex justify-between"><span class="text-slate-400">Placa</span><span id="rc-plate" class="font-semibold text-white">--</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">Espacio</span><span id="rc-slot" class="font-semibold text-white">--</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">Tiempo</span><span id="rc-time" class="font-semibold text-white">--</span></div>
+                <div class="border-t border-[#2b3a56] my-3"></div>
+                <div class="flex justify-between items-center"><span class="text-slate-400">Total a pagar</span><span id="rc-total" class="text-2xl font-extrabold text-teal-300">$0</span></div>
+                <div id="rc-method-wrap" class="pt-4">
+                    <p class="text-xs font-semibold uppercase text-slate-400 mb-2 text-left">Método de cobro</p>
+                    <div class="grid grid-cols-2 gap-3">
+                        <button onclick="setPayMethod('Efectivo', this)" class="pay-method p-3 rounded-xl border-2 border-emerald-500/40 text-emerald-400 text-sm font-semibold transition"><i class="fas fa-money-bill-wave mr-1"></i> Efectivo</button>
+                        <button onclick="setPayMethod('Datáfono', this)" class="pay-method p-3 rounded-xl border-2 border-[#2b3a56] text-slate-300 text-sm font-semibold transition"><i class="fas fa-credit-card mr-1"></i> Datáfono</button>
+                    </div>
+                </div>
+                <button onclick="confirmReceipt()" class="btn-primary w-full p-4 text-sm mt-4">Cobrar y liberar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL PAGO ANTICIPADO (cliente) -->
+    <div id="modal-prepay" class="fixed inset-0 z-[700] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6 hide">
+        <div class="card w-full max-w-sm overflow-hidden animate-pop">
+            <div class="bg-gradient-to-r from-orange-600 to-amber-500 p-8 text-white text-center">
+                <div class="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center text-2xl mx-auto mb-3"><i class="fas fa-bolt"></i></div>
+                <h3 class="text-xl font-extrabold">Pago anticipado</h3>
+                <p class="text-xs opacity-80 mt-1">Sale sin fila: solo muestra tu ticket al salir</p>
+            </div>
+            <div class="p-8 space-y-4 text-sm">
+                <div class="flex justify-between"><span class="text-slate-400">Vehículo</span><span id="pp-plate" class="font-semibold text-white">--</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">Espacio</span><span id="pp-slot" class="font-semibold text-white">--</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">Horas</span><span id="pp-hours" class="font-semibold text-white">--</span></div>
+                <div class="border-t border-[#2b3a56] my-2"></div>
+                <div class="flex justify-between items-center"><span class="text-slate-400">Total a pagar</span><span id="pp-total" class="text-2xl font-extrabold text-amber-300">$0</span></div>
+                <div>
+                    <p class="text-xs font-semibold uppercase text-slate-400 mb-2 text-left">Método de pago</p>
+                    <div class="grid grid-cols-2 gap-3">
+                        <button onclick="setPrepayMethod('Tarjeta', this)" class="pp-method p-3 rounded-xl border-2 border-amber-500/50 text-amber-300 text-sm font-semibold transition"><i class="fas fa-credit-card mr-1"></i> Tarjeta</button>
+                        <button onclick="setPrepayMethod('PSE', this)" class="pp-method p-3 rounded-xl border-2 border-[#2b3a56] text-slate-300 text-sm font-semibold transition"><i class="fas fa-building-columns mr-1"></i> PSE</button>
+                    </div>
+                </div>
+                <button onclick="custPayNow()" class="btn-accent w-full p-4 text-sm mt-2">Confirmar pago</button>
+                <button onclick="closePrepay()" class="w-full text-xs font-semibold text-slate-500 hover:text-amber-400">Volver</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL TICKET GENERADO (cliente) -->
+    <div id="modal-ticket" class="fixed inset-0 z-[750] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6 hide">
+        <div class="card w-full max-w-sm overflow-hidden animate-pop text-center">
+            <div class="bg-gradient-to-r from-emerald-600 to-teal-500 p-8 text-white">
+                <div class="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center text-2xl mx-auto mb-3"><i class="fas fa-circle-check"></i></div>
+                <h3 class="text-xl font-extrabold">¡Pago confirmado!</h3>
+            </div>
+            <div class="p-8 space-y-4">
+                <p class="text-sm text-slate-400">Tu número de ticket. Muéstralo al operador al salir para retirarte sin volver a pagar.</p>
+                <div class="p-6 bg-teal-500/10 rounded-2xl border border-teal-500/25">
+                    <p class="text-xs font-semibold text-teal-400 uppercase mb-1">Ticket de salida</p>
+                    <h4 id="tk-number" class="text-5xl font-extrabold text-teal-300 tracking-[0.3em]">000</h4>
+                </div>
+                <p class="text-[11px] text-slate-500"><i class="fas fa-info-circle mr-1"></i>Guardamos este ticket en tu panel y en el historial.</p>
+                <button onclick="closeTicket()" class="btn-primary w-full p-4 text-sm">Entendido</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL VALIDAR TICKET (operador) -->
+    <div id="modal-validate" class="fixed inset-0 z-[750] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6 hide">
+        <div class="card w-full max-w-sm overflow-hidden animate-pop text-center">
+            <div class="bg-gradient-to-r from-teal-600 to-emerald-500 p-8 text-white">
+                <div class="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center text-2xl mx-auto mb-3"><i class="fas fa-ticket-simple"></i></div>
+                <h3 class="text-xl font-extrabold">Salida prepagada</h3>
+                <p class="text-xs opacity-80 mt-1">Este vehículo ya pagó en línea</p>
+            </div>
+            <div class="p-8 space-y-4 text-sm">
+                <div class="flex justify-between"><span class="text-slate-400">Placa</span><span id="vt-plate" class="font-semibold text-white">--</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">Espacio</span><span id="vt-slot" class="font-semibold text-white">--</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">Pagado</span><span id="vt-paid" class="font-semibold text-emerald-300">$0</span></div>
+                <div class="border-t border-[#2b3a56] my-2"></div>
+                <p class="text-xs font-semibold uppercase text-slate-400 mb-1 text-left">Ingresa el ticket del cliente</p>
+                <input type="text" id="vt-input" inputmode="numeric" maxlength="3" placeholder="000" class="input-soft w-full p-4 text-center text-3xl font-extrabold tracking-[0.3em]">
+                <p id="vt-msg" class="text-xs text-red-400 hide"><i class="fas fa-circle-xmark mr-1"></i>Ticket incorrecto. Verifica el número.</p>
+                <button onclick="confirmValidate()" class="btn-primary w-full p-4 text-sm mt-2">Validar y permitir salida</button>
+                <button onclick="closeValidate()" class="w-full text-xs font-semibold text-slate-500 hover:text-teal-400">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let rates = { auto: 5000, moto: 2500 }; // tarifa por hora por tipo
+        const HOLD_MS = 15 * 60 * 1000; // bloqueo de 15 min sin check-in (R3.5)
+        let totalSlots = 40;
+        let slots = [];
+        let myVehicles = []; // { plate, color, type }
+        let reservations = []; // { plate, slotId, type, hours, startTime, expiresAt, checkedIn }
+        let history = [];
+        let role = "";
+        let pendingRelease = null; // { slotId, plate, cost, dur, method }
+        let pendingPrepay = null;  // { plate, slotId, type, hours, amount, method }
+        let pendingValidate = null; // { slotId } salida prepagada por validar
+        let manualType = 'auto'; // tipo de vehículo seleccionado en registro manual de ingreso
+        let users = [ // gestión de usuarios (rol Administrador)
+            { id: 1, user: 'admin',    name: 'Administrador General', role: 'Admin',    active: true },
+            { id: 2, user: 'operador', name: 'Operador de Caja',      role: 'Operador', active: true },
+            { id: 3, user: 'cliente',  name: 'Cliente Demo',          role: 'Cliente',  active: true }
+        ];
+        let currentUser = null; // usuario (en minúsculas) que tiene la sesión abierta
+        let clientData = {};    // datos separados por cliente: { [usuario]: { name, vehicles: [{plate,color,type}] } }
+
+        /* ---------- Persistencia (memoria de sesión) ----------
+           Los datos se conservan al cambiar de usuario (cerrar sesión e iniciar
+           con otro), pero se reinician al refrescar el sistema, porque viven en
+           una variable en memoria en lugar de localStorage. */
+        let __sessionState = null;
+        function saveState() {
+            __sessionState = JSON.stringify({ totalSlots, slots, myVehicles, reservations, history, rates, users, clientData });
+        }
+        function loadState() {
+            try {
+                const raw = __sessionState;
+                if(!raw) return false;
+                const d = JSON.parse(raw);
+                totalSlots = d.totalSlots || 40;
+                slots = d.slots || [];
+                // compatibilidad: convertir placas antiguas (string) a objeto
+                myVehicles = (d.myVehicles || []).map(v => typeof v === 'string' ? { plate: v, color: '—', type: 'auto' } : v);
+                reservations = d.reservations || [];
+                history = d.history || [];
+                rates = d.rates || rates;
+                if(Array.isArray(d.users) && d.users.length) users = d.users;
+                clientData = d.clientData || {};
+                return true;
+            } catch(e) { return false; }
+        }
+
+        function init() {
+            if(!loadState()) { slots = []; }
+            syncSlots();
+            saveState();
+            setInterval(tick, 1000);
+        }
+
+        function tick() {
+            const clock = document.getElementById('clock');
+            if(clock) clock.innerText = new Date().toLocaleTimeString();
+            expireHolds();
+            updateLiveTimers();
+        }
+
+        function fmtDuration(ms) {
+            const s = Math.max(0, Math.floor(ms/1000));
+            const h = String(Math.floor(s/3600)).padStart(2,'0');
+            const m = String(Math.floor((s%3600)/60)).padStart(2,'0');
+            const sec = String(s%60).padStart(2,'0');
+            return `${h}:${m}:${sec}`;
+        }
+        function elapsedCost(startTime, type) {
+            const rate = rates[type] || rates.auto;
+            const hours = (Date.now() - startTime) / 3600000;
+            return Math.max(rate, Math.ceil(hours * rate));
+        }
+
+        /* Expira reservas sin check-in tras 15 min (R3.5) */
+        function expireHolds() {
+            let changed = false;
+            reservations = reservations.filter(r => {
+                if(!r.checkedIn && r.expiresAt && Date.now() > r.expiresAt) {
+                    logMovement('salida', r.plate, r.slotId, 0, 'Reserva expirada');
+                    changed = true;
+                    return false;
+                }
+                return true;
+            });
+            if(changed) {
+                saveState();
+                if(role === 'Cliente') refreshCustomer();
+                else if(document.getElementById('staff-content')) loadStaffModule('dashboard');
+                toast("Una reserva expiró por falta de check-in");
+            }
+        }
+
+        function updateLiveTimers() {
+            // Cliente: reserva activa (cuenta regresiva) o vehículo parqueado (costo acumulado)
+            const panel = document.getElementById('cust-res-panel');
+            if(panel && !panel.classList.contains('hide')) {
+                const myRes = myReservation();
+                const myBusy = slots.find(s => s.status === 'busy' && myVehicles.some(v => v.plate === s.plate));
+                const detail = document.getElementById('cust-res-detail');
+                if(myRes && !myRes.checkedIn) {
+                    const left = myRes.expiresAt - Date.now();
+                    if(detail) detail.innerHTML = `Tiempo para llegar: <span class="font-semibold text-amber-300">${fmtDuration(left)}</span>`;
+                } else if(myBusy) {
+                    if(detail) detail.innerHTML = `Tiempo: <span class="font-semibold text-amber-300">${fmtDuration(Date.now() - myBusy.startTime)}</span> · Costo: <span class="font-semibold text-teal-300">$${elapsedCost(myBusy.startTime, myBusy.type).toLocaleString()}</span>`;
+                }
+            }
+            // Staff dashboard: costos acumulados
+            document.querySelectorAll('[data-busy-start]').forEach(el => {
+                const st = parseInt(el.getAttribute('data-busy-start'));
+                const type = el.getAttribute('data-type') || 'auto';
+                const timerEl = el.querySelector('[data-timer]');
+                const costEl = el.querySelector('[data-cost]');
+                // Los vehículos prepagados no muestran contador de cobro
+                if(timerEl) timerEl.innerText = fmtDuration(Date.now() - st);
+                if(costEl) costEl.innerText = '$' + elapsedCost(st, type).toLocaleString();
+            });
+        }
+
+        function syncSlots() {
+            const current = [...slots];
+            slots = [];
+            for(let i=1; i<=totalSlots; i++) {
+                const existing = current.find(x => x.id == i);
+                slots.push(existing || { id: i, status: "free", plate: "", type: "auto", startTime: null });
+            }
+        }
+
+        function logMovement(type, plate, slotId, cost, note) {
+            history.unshift({ type, plate, slotId, cost: cost || 0, note: note || '', time: Date.now() });
+            if(history.length > 80) history.pop();
+        }
+
+        function showLoginError(msg) {
+            const el = document.getElementById('login-error');
+            el.innerText = msg;
+            el.classList.remove('hide');
+            toast(msg);
+        }
+
+        function enterAs(userRole) {
+            const userVal = document.getElementById('login-user').value.trim();
+            const passVal = document.getElementById('login-pass').value;
+            // Validaciones básicas con mensajes claros
+            if(!userVal && !passVal) { return showLoginError('Ingresa tu usuario y contraseña para continuar'); }
+            if(!userVal) { return showLoginError('Por favor escribe tu nombre de usuario'); }
+            if(!passVal) { return showLoginError('Por favor escribe tu contraseña'); }
+            if(passVal.length < 8) { return showLoginError('La contraseña debe tener al menos 8 caracteres'); }
+            document.getElementById('login-error').classList.add('hide');
+
+            role = userRole;
+            const userName = userVal;
+            document.getElementById('screen-auth').classList.add('hide');
+            document.getElementById('app').classList.remove('hide');
+
+            if(role === 'Cliente') {
+                // Cada cliente tiene sus propios datos, guardados por separado bajo su usuario.
+                currentUser = userVal.toLowerCase();
+                if(!clientData[currentUser]) clientData[currentUser] = { name: userName, vehicles: [] };
+                else clientData[currentUser].name = userName;
+                myVehicles = clientData[currentUser].vehicles; // referencia a los vehículos de ESTE cliente
+                // Registrar al cliente en la lista de usuarios para que el administrador lo vea
+                if(!users.some(u => u.user === currentUser)) {
+                    users.push({ id: Date.now(), user: currentUser, name: userName, role: 'Cliente', active: true });
+                }
+                saveState();
+                document.getElementById('display-name').innerText = userName;
+                document.getElementById('view-customer').classList.remove('hide');
+                document.getElementById('side-staff').classList.add('hide');
+                document.getElementById('view-staff').classList.add('hide');
+                refreshCustomer();
+            } else {
+                currentUser = userVal.toLowerCase();
+                document.getElementById('view-customer').classList.add('hide');
+                document.getElementById('side-staff').classList.remove('hide');
+                document.getElementById('view-staff').classList.remove('hide');
+                document.getElementById('staff-title').innerText = role === 'Admin' ? 'Administrador' : 'Operador';
+                renderStaffNav(); loadStaffModule('dashboard');
+            }
+        }
+
+        function exitToAuth() {
+            // Cierra la sesión actual SIN borrar los datos del sistema (se conservan
+            // en memoria para que otro usuario pueda ingresar y verlos). Solo un
+            // refresco del navegador reinicia el sistema.
+            document.getElementById('app').classList.add('hide');
+            document.getElementById('view-customer').classList.add('hide');
+            document.getElementById('view-staff').classList.add('hide');
+            document.getElementById('side-staff').classList.add('hide');
+            // Limpiar el formulario para el siguiente inicio de sesión
+            document.getElementById('login-user').value = '';
+            document.getElementById('login-pass').value = '';
+            document.getElementById('login-error').classList.add('hide');
+            role = null;
+            // Limpiar la sesión del cliente para que el siguiente usuario NO vea datos ajenos
+            currentUser = null;
+            myVehicles = [];
+            document.getElementById('screen-auth').classList.remove('hide');
+        }
+
+        /* Devuelve la reserva del cliente en sesión (según sus placas), no la de otro usuario */
+        function myReservation() {
+            return reservations.find(r => myVehicles.some(v => v.plate === r.plate));
+        }
+
+        function refreshCustomer() {
+            const map = document.getElementById('map-customer');
+            map.innerHTML = slots.map(s => {
+                const res = reservations.find(r => r.slotId == s.id);
+                let sClass = res ? 'slot-res' : `slot-${s.status}`;
+                let icon = s.status === 'maint' ? 'fa-screwdriver-wrench' : (res ? 'fa-lock' : (s.status === 'busy' ? 'fa-car' : 'fa-square-parking'));
+                return `<button onclick="custClickSlot(${s.id})" class="slot ${sClass} h-16 flex flex-col items-center justify-center gap-1">
+                    <span class="text-[9px] font-bold opacity-50 absolute top-1.5 left-2">${s.id}</span>
+                    <i class="fas ${icon} text-sm"></i>
+                </button>`;
+            }).join('');
+            document.getElementById('cust-vehicles').innerHTML = myVehicles.length ? myVehicles.map(v => `<div class="flex items-center gap-2 px-4 py-2 rounded-full bg-teal-500/12 text-teal-300 text-sm font-semibold"><i class="fas ${v.type === 'moto' ? 'fa-motorcycle' : 'fa-car-side'}"></i> ${v.plate} <span class="text-[11px] text-slate-400 font-normal">· ${v.color}</span></div>`).join('') : `<p class="text-xs text-slate-500">Aún no tienes vehículos registrados.</p>`;
+
+            // Panel de reserva/vehículo
+            const panel = document.getElementById('cust-res-panel');
+            const tag = document.getElementById('cust-res-tag');
+            const summary = document.getElementById('cust-res-summary');
+            const checkinBtn = document.getElementById('cust-checkin-btn');
+            const cancelBtn = document.getElementById('cust-cancel-btn');
+            const myRes = myReservation();
+            const myBusy = slots.find(s => s.status === 'busy' && myVehicles.some(v => v.plate === s.plate));
+            if(myRes && !myRes.checkedIn) {
+                panel.classList.remove('hide');
+                tag.innerHTML = '<i class="fas fa-hourglass-half mr-1"></i>Reserva pendiente de llegada';
+                summary.innerText = `Espacio ${myRes.slotId} · ${myRes.plate}`;
+                checkinBtn.classList.remove('hide');
+                cancelBtn.classList.remove('hide');
+            } else if(myBusy) {
+                panel.classList.remove('hide');
+                tag.innerHTML = '<i class="fas fa-car mr-1"></i>Vehículo parqueado';
+                summary.innerText = `Espacio ${myBusy.id} · ${myBusy.plate}`;
+                checkinBtn.classList.add('hide');
+                cancelBtn.classList.add('hide');
+            } else {
+                panel.classList.add('hide');
+            }
+            renderCustHistory();
+            saveState();
+        }
+
+        function renderCustHistory() {
+            const box = document.getElementById('cust-history');
+            if(!box) return;
+            const mine = history.filter(h => myVehicles.some(v => v.plate === h.plate));
+            const meta = {
+                entrada:  { icon: 'fa-right-to-bracket', color: 'text-emerald-400', bg: 'bg-emerald-500/15', label: 'Ingreso' },
+                salida:   { icon: 'fa-right-from-bracket', color: 'text-red-400', bg: 'bg-red-500/15', label: 'Salida' },
+                reserva:  { icon: 'fa-bookmark', color: 'text-amber-400', bg: 'bg-amber-500/15', label: 'Reserva' }
+            };
+
+            // Estado activo del cliente: parqueado (pendiente de pago) o reserva por confirmar
+            let liveHtml = '';
+            const myBusySlot = slots.find(s => s.status === 'busy' && myVehicles.some(v => v.plate === s.plate));
+            const myRes = reservations.find(r => myVehicles.some(v => v.plate === r.plate));
+            if(myBusySlot) {
+                const rate = rates[myBusySlot.type] || rates.auto;
+                const mins = Math.max(1, Math.ceil((Date.now() - (myBusySlot.startTime || Date.now())) / 60000));
+                const hrs = Math.max(1, Math.ceil(mins / 60));
+                const estimate = hrs * rate;
+                liveHtml = `<div class="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 flex flex-wrap gap-3 justify-between items-center">
+                    <div class="flex items-center gap-3">
+                        <span class="w-9 h-9 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center"><i class="fas fa-hourglass-half"></i></span>
+                        <div>
+                            <p class="font-semibold text-amber-300 text-sm">Pendiente de pago · ${myBusySlot.plate}</p>
+                            <p class="text-xs text-slate-400">Espacio ${myBusySlot.id} · en uso ${mins} min · el operador cobra al salir</p>
+                        </div>
+                    </div>
+                    <span class="text-amber-300 font-semibold text-sm">~$${estimate.toLocaleString()}</span>
+                </div>`;
+            } else if(myRes) {
+                liveHtml = `<div class="bg-teal-500/10 border border-teal-500/30 rounded-xl p-4 flex flex-wrap gap-3 justify-between items-center">
+                    <div class="flex items-center gap-3">
+                        <span class="w-9 h-9 rounded-lg bg-teal-500/20 text-teal-400 flex items-center justify-center"><i class="fas fa-bookmark"></i></span>
+                        <div>
+                            <p class="font-semibold text-teal-300 text-sm">Reserva activa · ${myRes.plate}</p>
+                            <p class="text-xs text-slate-400">Espacio ${myRes.slotId} · confirma tu llegada · pago al salir</p>
+                        </div>
+                    </div>
+                    <span class="text-slate-400 font-semibold text-xs">Sin cobro aún</span>
+                </div>`;
+            }
+
+            box.innerHTML = liveHtml + (mine.length ? mine.slice(0,10).map(h => {
+                const m = meta[h.type] || meta.reserva;
+                return `<div class="flex flex-wrap gap-3 justify-between items-center bg-[#223049] rounded-xl p-4">
+                    <div class="flex items-center gap-3">
+                        <span class="w-9 h-9 rounded-lg ${m.bg} ${m.color} flex items-center justify-center"><i class="fas ${m.icon}"></i></span>
+                        <div>
+                            <p class="font-semibold text-white text-sm">${m.label} · ${h.plate}</p>
+                            <p class="text-xs text-slate-500">Espacio ${h.slotId} · ${new Date(h.time).toLocaleString()}${h.note ? ' · ' + h.note : ''}</p>
+                        </div>
+                    </div>
+                    ${h.cost ? `<span class="text-teal-300 font-semibold text-sm">$${h.cost.toLocaleString()}</span>` : ''}
+                </div>`;
+            }).join('') : (liveHtml ? '' : `<p class="text-sm text-slate-500 text-center py-6">Aún no tienes movimientos.</p>`));
+        }
+
+        function custAddCar() {
+            const p = document.getElementById('cust-new-plate').value.toUpperCase().trim();
+            const color = document.getElementById('cust-new-color').value.trim() || '—';
+            const type = document.getElementById('cust-new-type').value;
+            if(p.length < 5) return toast("Placa inválida, revisa el formato");
+            if(!myVehicles.some(v => v.plate === p)) myVehicles.push({ plate: p, color, type });
+            document.getElementById('cust-new-plate').value = "";
+            document.getElementById('cust-new-color').value = "";
+            refreshCustomer();
+            toast("Vehículo registrado con éxito");
+        }
+
+        function custClickSlot(id) {
+            if(myVehicles.length === 0) return toast("Primero registra un vehículo");
+            if(myReservation()) return toast("Ya tienes una reserva activa");
+            const s = slots.find(x => x.id == id);
+            if(s.status !== 'free' || reservations.find(r => r.slotId == id)) return toast("Ese espacio no está disponible");
+            document.getElementById('modal-reserve').classList.remove('hide');
+            document.getElementById('modal-slot-id').innerText = id;
+            document.getElementById('modal-plate-sel').innerHTML = myVehicles.map(v => `<option value="${v.plate}" data-type="${v.type}">${v.plate} · ${v.type === 'moto' ? 'Moto' : 'Automóvil'}</option>`).join('');
+            calcModalTotal();
+        }
+
+        function modalSelType() {
+            const sel = document.getElementById('modal-plate-sel');
+            return sel.options[sel.selectedIndex]?.getAttribute('data-type') || 'auto';
+        }
+        function calcModalTotal() {
+            const h = document.getElementById('modal-hours-in').value || 1;
+            const rate = rates[modalSelType()] || rates.auto;
+            document.getElementById('modal-total-display').innerHTML = `$${(h * rate).toLocaleString()} <span class="text-sm font-medium">COP</span>`;
+        }
+
+        function custConfirmBooking() {
+            const id = parseInt(document.getElementById('modal-slot-id').innerText);
+            const plate = document.getElementById('modal-plate-sel').value;
+            const type = modalSelType();
+            const now = Date.now();
+            reservations.push({ plate, slotId: id, type, hours: document.getElementById('modal-hours-in').value, startTime: now, expiresAt: now + HOLD_MS, checkedIn: false, prepaid: false });
+            logMovement('reserva', plate, id, 0);
+            closeModal(); refreshCustomer(); toast("¡Reserva confirmada! Confirma tu llegada en 15 min");
+        }
+
+        /* --- Pago anticipado en línea con ticket de 3 dígitos --- */
+        function openPrepay() {
+            const id = parseInt(document.getElementById('modal-slot-id').innerText);
+            const plate = document.getElementById('modal-plate-sel').value;
+            const type = modalSelType();
+            const hours = parseInt(document.getElementById('modal-hours-in').value) || 1;
+            const amount = hours * (rates[type] || rates.auto);
+            pendingPrepay = { plate, slotId: id, type, hours, amount, method: 'Tarjeta' };
+            document.getElementById('pp-plate').innerText = plate;
+            document.getElementById('pp-slot').innerText = id;
+            document.getElementById('pp-hours').innerText = hours + (hours === 1 ? ' hora' : ' horas');
+            document.getElementById('pp-total').innerText = '$' + amount.toLocaleString();
+            document.querySelectorAll('.pp-method').forEach((b,i)=>{
+                b.classList.toggle('border-amber-500/50', i===0);
+                b.classList.toggle('text-amber-300', i===0);
+                b.classList.toggle('border-[#2b3a56]', i!==0);
+                b.classList.toggle('text-slate-300', i!==0);
+            });
+            closeModal();
+            document.getElementById('modal-prepay').classList.remove('hide');
+        }
+        function setPrepayMethod(method, btn) {
+            if(pendingPrepay) pendingPrepay.method = method;
+            document.querySelectorAll('.pp-method').forEach(b=>{
+                b.classList.remove('border-amber-500/50','text-amber-300');
+                b.classList.add('border-[#2b3a56]','text-slate-300');
+            });
+            btn.classList.add('border-amber-500/50','text-amber-300');
+            btn.classList.remove('border-[#2b3a56]','text-slate-300');
+        }
+        function closePrepay() { document.getElementById('modal-prepay').classList.add('hide'); }
+        function custPayNow() {
+            if(!pendingPrepay) return closePrepay();
+            const { plate, slotId, type, hours, amount, method } = pendingPrepay;
+            const ticket = String(Math.floor(100 + Math.random() * 900)); // 3 dígitos (100-999)
+            const now = Date.now();
+            reservations.push({ plate, slotId, type, hours, startTime: now, expiresAt: now + HOLD_MS, checkedIn: false, prepaid: true, ticket, paidAmount: amount, payMethod: method });
+            logMovement('reserva', plate, slotId, amount, 'Prepago ' + method + ' · ticket ' + ticket);
+            pendingPrepay = null;
+            closePrepay();
+            document.getElementById('tk-number').innerText = ticket;
+            document.getElementById('modal-ticket').classList.remove('hide');
+            refreshCustomer();
+        }
+        function closeTicket() { document.getElementById('modal-ticket').classList.add('hide'); toast("Reserva prepagada lista. Confirma tu llegada en 15 min"); }
+
+        /* Check-in del cliente al ocupar el espacio reservado (R1.8) */
+        function custCheckIn() {
+            const res = myReservation();
+            if(!res) return;
+            const s = slots.find(x => x.id == res.slotId);
+            s.status = 'busy'; s.plate = res.plate; s.type = res.type; s.startTime = Date.now();
+            // Conservamos el pago en línea en el espacio para que el operador NO cobre de nuevo
+            s.prepaid = !!res.prepaid; s.ticket = res.ticket || null; s.paidAmount = res.paidAmount || 0; s.payMethod = res.payMethod || null;
+            logMovement('entrada', res.plate, res.slotId, 0, res.prepaid ? 'Check-in cliente · prepagado ticket ' + res.ticket : 'Check-in cliente');
+            reservations = reservations.filter(r => r.slotId != res.slotId);
+            saveState();
+            refreshCustomer();
+            toast(res.prepaid ? "¡Check-in confirmado! Ya pagaste en línea, muestra tu ticket al salir" : "¡Check-in confirmado! Bienvenido");
+        }
+
+        function renderStaffNav() {
+            const n = document.getElementById('nav-staff');
+            let m = `<button onclick="loadStaffModule('dashboard')" class="nav-link w-full text-left p-4 flex items-center gap-4 text-sm font-semibold"><i class="fas fa-gauge-high w-5 text-center"></i> Resumen</button>
+                     <button onclick="loadStaffModule('op-validate')" class="nav-link w-full text-left p-4 flex items-center gap-4 text-sm font-semibold"><i class="fas fa-qrcode w-5 text-center"></i> Validar placa</button>
+                     <button onclick="loadStaffModule('active')" class="nav-link w-full text-left p-4 flex items-center gap-4 text-sm font-semibold"><i class="fas fa-magnifying-glass-location w-5 text-center"></i> Vehículos activos</button>
+                     <button onclick="loadStaffModule('history')" class="nav-link w-full text-left p-4 flex items-center gap-4 text-sm font-semibold"><i class="fas fa-clock-rotate-left w-5 text-center"></i> Historial</button>`;
+            if(role === 'Admin') {
+                m += `<button onclick="loadStaffModule('reports')" class="nav-link w-full text-left p-4 flex items-center gap-4 text-sm font-semibold"><i class="fas fa-chart-line w-5 text-center"></i> Reportes</button>`;
+                m += `<button onclick="loadStaffModule('admin-users')" class="nav-link w-full text-left p-4 flex items-center gap-4 text-sm font-semibold"><i class="fas fa-users-gear w-5 text-center"></i> Usuarios</button>`;
+                m += `<button onclick="loadStaffModule('admin-clients')" class="nav-link w-full text-left p-4 flex items-center gap-4 text-sm font-semibold"><i class="fas fa-id-card w-5 text-center"></i> Clientes</button>`;
+                m += `<button onclick="loadStaffModule('maint')" class="nav-link w-full text-left p-4 flex items-center gap-4 text-sm font-semibold"><i class="fas fa-screwdriver-wrench w-5 text-center"></i> Mantenimiento</button>`;
+                m += `<button onclick="loadStaffModule('admin-slots')" class="nav-link w-full text-left p-4 flex items-center gap-4 text-sm font-semibold"><i class="fas fa-sliders w-5 text-center"></i> Configuración</button>`;
+            }
+            m += `<button onclick="loadStaffModule('help')" class="nav-link w-full text-left p-4 flex items-center gap-4 text-sm font-semibold"><i class="fas fa-circle-question w-5 text-center"></i> Ayuda</button>`;
+            n.innerHTML = m;
+        }
+
+        let currentModule = 'dashboard';
+        function loadStaffModule(mod) {
+            currentModule = mod;
+            const cont = document.getElementById('staff-content');
+            const titles = { 'dashboard': (role === 'Admin' ? 'Administrador' : 'Operador'), 'op-validate': 'Validar placa', 'active': 'Vehículos activos', 'history': 'Historial de movimientos', 'reports': 'Reportes', 'admin-users': 'Gestión de usuarios', 'admin-clients': 'Clientes registrados', 'maint': 'Mantenimiento', 'admin-slots': 'Configuración', 'help': 'Ayuda' };
+            const titleEl = document.getElementById('staff-title');
+            if(titleEl) titleEl.innerText = titles[mod] || 'Panel';
+            if(mod === 'dashboard') {
+                const busyCount = slots.filter(s => s.status === 'busy').length;
+                const maintCount = slots.filter(s => s.status === 'maint').length;
+                const resCount = reservations.length;
+                const available = totalSlots - busyCount - maintCount - resCount;
+                const pct = totalSlots ? Math.round((available/totalSlots)*100) : 0;
+                const busySlots = slots.filter(s => s.status === 'busy');
+                cont.innerHTML = `
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                    <div class="soft-panel p-8">
+                        <div class="w-12 h-12 rounded-2xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center text-lg mb-4"><i class="fas fa-square-parking"></i></div>
+                        <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Disponibles</p>
+                        <h4 class="text-5xl font-extrabold text-emerald-400">${available}</h4>
+                    </div>
+                    <div class="soft-panel p-8">
+                        <div class="w-12 h-12 rounded-2xl bg-amber-500/15 text-amber-400 flex items-center justify-center text-lg mb-4"><i class="fas fa-clock"></i></div>
+                        <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Reservados</p>
+                        <h4 class="text-5xl font-extrabold text-amber-400">${resCount}</h4>
+                    </div>
+                    <div class="soft-panel p-8">
+                        <div class="w-12 h-12 rounded-2xl bg-red-500/15 text-red-400 flex items-center justify-center text-lg mb-4"><i class="fas fa-car"></i></div>
+                        <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Ocupados</p>
+                        <h4 class="text-5xl font-extrabold text-red-400">${busyCount}</h4>
+                    </div>
+                    <div class="soft-panel p-8">
+                        <div class="w-12 h-12 rounded-2xl bg-slate-500/15 text-slate-400 flex items-center justify-center text-lg mb-4"><i class="fas fa-screwdriver-wrench"></i></div>
+                        <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Mantenimiento</p>
+                        <h4 class="text-5xl font-extrabold text-slate-400">${maintCount}</h4>
+                    </div>
+                </div>
+                <div class="soft-panel p-8 mb-8">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-sm font-bold text-white">Disponibilidad</h3>
+                        <span class="text-sm font-semibold text-emerald-400">${available} de ${totalSlots} libres · ${pct}%</span>
+                    </div>
+                    <div class="w-full h-4 rounded-full bg-[#223049] overflow-hidden">
+                        <div class="progress-bar h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400" style="width:${pct}%"></div>
+                    </div>
+                </div>
+                <div class="soft-panel p-8">
+                    <h3 class="text-sm font-bold text-white mb-1"><i class="fas fa-stopwatch text-teal-400 mr-2"></i>Vehículos en curso</h3>
+                    <p class="text-xs text-slate-500 mb-5">Tiempo y costo acumulado en tiempo real</p>
+                    <div class="space-y-3">
+                        ${busySlots.length ? busySlots.map(s => `
+                        <div data-busy-start="${s.startTime || Date.now()}" data-type="${s.type || 'auto'}" class="flex flex-wrap gap-3 justify-between items-center bg-[#223049] rounded-xl p-4">
+                            <div class="flex items-center gap-3">
+                                <span class="w-9 h-9 rounded-lg bg-red-500/15 text-red-400 flex items-center justify-center text-xs font-bold">${s.id}</span>
+                                <span class="font-semibold text-white">${s.plate || 'Sin placa'} <span class="text-[11px] text-slate-400 font-normal">· ${s.type === 'moto' ? 'Moto' : 'Auto'}</span>
+                                    ${s.prepaid ? '<span class="ml-2 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide bg-emerald-500/15 text-emerald-300 px-2 py-1 rounded-md"><i class="fas fa-circle-check"></i> Pagado en línea</span>' : ''}
+                                </span>
+                            </div>
+                            <div class="flex items-center gap-6 text-sm">
+                                ${s.prepaid
+                                    ? `<span class="text-emerald-300 font-semibold"><i class="fas fa-ticket-simple mr-1"></i>Ticket requerido</span>
+                                       <button onclick="opRelease(${s.id})" class="bg-teal-500 text-white px-4 py-2 rounded-lg text-xs font-semibold hover:bg-teal-600 transition">Validar ticket y liberar</button>`
+                                    : `<span class="text-amber-300 font-semibold"><i class="fas fa-clock mr-1"></i><span data-timer>00:00:00</span></span>
+                                       <span class="text-teal-300 font-semibold" data-cost>$0</span>
+                                       <button onclick="opRelease(${s.id})" class="bg-emerald-500 text-white px-4 py-2 rounded-lg text-xs font-semibold hover:bg-emerald-600 transition">Cobrar y liberar</button>`}
+                            </div>
+                        </div>`).join('') : `<p class="text-sm text-slate-500 text-center py-4">No hay vehículos ocupando espacios.</p>`}
+                    </div>
+                </div>`;
+                updateLiveTimers();
+            }
+            if(mod === 'op-validate') {
+                cont.innerHTML = `<div class="max-w-xl mx-auto soft-panel p-10 md:p-14 text-center">
+                    <div class="w-16 h-16 rounded-3xl bg-teal-500/15 text-teal-400 flex items-center justify-center text-2xl mx-auto mb-6"><i class="fas fa-qrcode"></i></div>
+                    <h3 class="text-lg font-bold text-white mb-2">Validar ingreso</h3>
+                    <p class="text-sm text-slate-400 mb-8">Ingresa la placa del vehículo (manual u OCR)</p>
+                    <input type="text" id="op-search-in" oninput="opFilterPlates()" placeholder="ABC123" class="input-soft w-full p-6 text-4xl font-bold text-center mb-4 uppercase">
+                    <div id="op-suggestions" class="flex flex-wrap gap-2 justify-center mb-6"></div>
+                    <button onclick="opSearchPlate()" class="btn-primary w-full p-4 text-sm">Buscar</button>
+                    <div id="op-res-area" class="mt-8 hide"></div>
+                </div>`;
+                opFilterPlates();
+            }
+            if(mod === 'history') {
+                cont.innerHTML = `<div class="soft-panel p-8 md:p-10">
+                    <div class="flex flex-wrap gap-3 justify-between items-center mb-6">
+                        <div>
+                            <h3 class="text-lg font-bold text-white mb-1">Historial de movimientos</h3>
+                            <p class="text-sm text-slate-400">Entradas, salidas y reservas recientes</p>
+                        </div>
+                        <input type="text" id="hist-filter" oninput="renderHistory()" placeholder="Filtrar por placa" class="input-soft p-3 text-sm uppercase">
+                    </div>
+                    <div id="hist-list" class="space-y-2"></div>
+                </div>`;
+                renderHistory();
+            }
+            if(mod === 'reports') {
+                // Todos los pagos reales recibidos: cobros al salir (efectivo/datáfono)
+                // y pagos en línea anticipados (tarjeta/PSE), que se registran como reserva prepagada.
+                const detectMethod = (note) => {
+                    note = note || '';
+                    if(note.includes('Efectivo')) return 'Efectivo';
+                    if(note.includes('Datáfono')) return 'Datáfono';
+                    if(note.includes('Tarjeta'))  return 'Tarjeta';
+                    if(note.includes('PSE'))      return 'PSE';
+                    return 'Otro';
+                };
+                const pagos = history
+                    .filter(h => h.cost && (h.type === 'salida' || (h.type === 'reserva' && (h.note||'').includes('Prepago'))))
+                    .map(h => ({ ...h, metodo: detectMethod(h.note), online: h.type === 'reserva' }));
+                const ingresos = pagos.reduce((a,b) => a + b.cost, 0);
+                const busyCount = slots.filter(s => s.status === 'busy').length;
+                const ocupPct = totalSlots ? Math.round(((busyCount + reservations.length)/totalSlots)*100) : 0;
+                const sumBy = (m) => pagos.filter(p => p.metodo === m).reduce((a,b)=>a+b.cost,0);
+                const efectivo = sumBy('Efectivo');
+                const datafono = sumBy('Datáfono');
+                const tarjeta  = sumBy('Tarjeta');
+                const pse      = sumBy('PSE');
+                const enLinea  = tarjeta + pse;
+                const pct = (v) => ingresos ? (v/ingresos*100) : 0;
+                cont.innerHTML = `
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                    <div class="soft-panel p-8">
+                        <div class="w-12 h-12 rounded-2xl bg-teal-500/15 text-teal-400 flex items-center justify-center text-lg mb-4"><i class="fas fa-sack-dollar"></i></div>
+                        <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Ingresos totales</p>
+                        <h4 class="text-4xl font-extrabold text-teal-300">$${ingresos.toLocaleString()}</h4>
+                    </div>
+                    <div class="soft-panel p-8">
+                        <div class="w-12 h-12 rounded-2xl bg-orange-500/15 text-orange-400 flex items-center justify-center text-lg mb-4"><i class="fas fa-chart-pie"></i></div>
+                        <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Ocupación actual</p>
+                        <h4 class="text-4xl font-extrabold text-orange-300">${ocupPct}%</h4>
+                    </div>
+                    <div class="soft-panel p-8">
+                        <div class="w-12 h-12 rounded-2xl bg-amber-500/15 text-amber-400 flex items-center justify-center text-lg mb-4"><i class="fas fa-receipt"></i></div>
+                        <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Pagos registrados</p>
+                        <h4 class="text-4xl font-extrabold text-amber-300">${pagos.length}</h4>
+                        <p class="text-[11px] text-slate-500 mt-1">${enLinea.toLocaleString() !== '0' ? '$' + enLinea.toLocaleString() + ' en línea' : 'Incluye pagos en línea'}</p>
+                    </div>
+                </div>
+                <div class="soft-panel p-8">
+                    <h3 class="text-sm font-bold text-white mb-1">Ingresos por método de pago</h3>
+                    <p class="text-xs text-slate-500 mb-6">Cobros al salir y pagos en línea anticipados</p>
+                    <div class="space-y-4">
+                        <div>
+                            <div class="flex justify-between text-sm mb-1"><span class="text-slate-300"><i class="fas fa-money-bill-wave text-emerald-400 mr-2"></i>Efectivo <span class="text-[10px] text-slate-500">· en caja</span></span><span class="font-semibold text-emerald-400">$${efectivo.toLocaleString()}</span></div>
+                            <div class="w-full h-3 rounded-full bg-[#223049] overflow-hidden"><div class="progress-bar h-full rounded-full bg-emerald-500" style="width:${pct(efectivo)}%"></div></div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-sm mb-1"><span class="text-slate-300"><i class="fas fa-credit-card text-teal-400 mr-2"></i>Datáfono <span class="text-[10px] text-slate-500">· en caja</span></span><span class="font-semibold text-teal-400">$${datafono.toLocaleString()}</span></div>
+                            <div class="w-full h-3 rounded-full bg-[#223049] overflow-hidden"><div class="progress-bar h-full rounded-full bg-teal-500" style="width:${pct(datafono)}%"></div></div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-sm mb-1"><span class="text-slate-300"><i class="fas fa-bolt text-amber-400 mr-2"></i>Tarjeta <span class="text-[10px] text-slate-500">· en línea</span></span><span class="font-semibold text-amber-400">$${tarjeta.toLocaleString()}</span></div>
+                            <div class="w-full h-3 rounded-full bg-[#223049] overflow-hidden"><div class="progress-bar h-full rounded-full bg-amber-500" style="width:${pct(tarjeta)}%"></div></div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-sm mb-1"><span class="text-slate-300"><i class="fas fa-building-columns text-orange-400 mr-2"></i>PSE <span class="text-[10px] text-slate-500">· en línea</span></span><span class="font-semibold text-orange-400">$${pse.toLocaleString()}</span></div>
+                            <div class="w-full h-3 rounded-full bg-[#223049] overflow-hidden"><div class="progress-bar h-full rounded-full bg-orange-500" style="width:${pct(pse)}%"></div></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="soft-panel p-8 mt-6">
+                    <div class="flex items-center justify-between mb-6">
+                        <h3 class="text-sm font-bold text-white"><i class="fas fa-receipt text-teal-400 mr-2"></i>Pagos recibidos</h3>
+                        <span class="flex items-center gap-2 text-[11px] font-semibold text-emerald-400"><span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>En vivo</span>
+                    </div>
+                    <div class="space-y-2">
+                        ${pagos.length ? pagos.slice().sort((a,b)=>b.time-a.time).map(h => {
+                            const iconMap = { 'Efectivo':'fa-money-bill-wave text-emerald-400', 'Datáfono':'fa-credit-card text-teal-400', 'Tarjeta':'fa-bolt text-amber-400', 'PSE':'fa-building-columns text-orange-400' };
+                            const icon = iconMap[h.metodo] || 'fa-money-bill-wave text-emerald-400';
+                            const t = new Date(h.time).toLocaleTimeString('es-CO', {hour:'2-digit', minute:'2-digit'});
+                            const badge = h.online ? '<span class="ml-2 text-[10px] font-bold uppercase tracking-wide bg-amber-500/15 text-amber-300 px-2 py-0.5 rounded-md">En línea</span>' : '';
+                            return `<div class="flex items-center justify-between p-4 rounded-xl bg-[#1a2438] border border-[#2b3a56]">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-9 h-9 rounded-xl bg-[#223049] flex items-center justify-center"><i class="fas ${icon} text-sm"></i></div>
+                                    <div><p class="text-sm font-semibold text-white">Placa ${h.plate} · Espacio ${h.slotId}${badge}</p><p class="text-[11px] text-slate-500">${h.metodo} · ${t}</p></div>
+                                </div>
+                                <span class="text-sm font-bold text-emerald-400">+$${h.cost.toLocaleString()}</span>
+                            </div>`;
+                        }).join('') : `<p class="text-sm text-slate-500 text-center py-6">Aún no se han registrado pagos hoy</p>`}
+                    </div>
+                </div>`;
+            }
+            if(mod === 'maint') {
+                cont.innerHTML = `<div class="soft-panel p-8 md:p-10"><h3 class="text-lg font-bold text-white mb-1">Control de mantenimiento</h3><p class="text-sm text-slate-400 mb-8">Toca un espacio para bloquear o liberar</p><div id="maint-map" class="grid grid-cols-5 md:grid-cols-10 gap-3"></div></div>`;
+                renderMaintMap();
+            }
+            if(mod === 'admin-slots') {
+                cont.innerHTML = `<div class="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto">
+                    <div class="soft-panel p-10 text-center">
+                        <div class="w-16 h-16 rounded-3xl bg-orange-500/15 text-orange-400 flex items-center justify-center text-2xl mx-auto mb-6"><i class="fas fa-sliders"></i></div>
+                        <h3 class="text-lg font-bold text-white mb-2">Capacidad</h3>
+                        <p class="text-sm text-slate-400 mb-8">Cantidad total de espacios</p>
+                        <input type="number" id="admin-new-total" value="${totalSlots}" class="input-soft w-full p-6 text-center text-4xl font-bold mb-6">
+                        <button onclick="adminChangeSlots()" class="btn-accent w-full p-4 text-sm">Guardar capacidad</button>
+                    </div>
+                    <div class="soft-panel p-10">
+                        <div class="w-16 h-16 rounded-3xl bg-teal-500/15 text-teal-400 flex items-center justify-center text-2xl mx-auto mb-6"><i class="fas fa-tags"></i></div>
+                        <h3 class="text-lg font-bold text-white mb-2 text-center">Tarifas por hora</h3>
+                        <p class="text-sm text-slate-400 mb-6 text-center">Define el valor según el tipo de vehículo</p>
+                        <label class="text-xs font-semibold uppercase text-slate-400 mb-2 block">Automóvil (COP)</label>
+                        <input type="number" id="rate-auto" value="${rates.auto}" class="input-soft w-full p-4 mb-4 font-semibold">
+                        <label class="text-xs font-semibold uppercase text-slate-400 mb-2 block">Moto (COP)</label>
+                        <input type="number" id="rate-moto" value="${rates.moto}" class="input-soft w-full p-4 mb-6 font-semibold">
+                        <button onclick="adminChangeRates()" class="btn-primary w-full p-4 text-sm">Guardar tarifas</button>
+                    </div>
+                </div>`;
+            }
+            if(mod === 'active') {
+                cont.innerHTML = `<div class="soft-panel p-8 md:p-10">
+                    <div class="flex flex-wrap gap-3 justify-between items-center mb-6">
+                        <div>
+                            <h3 class="text-lg font-bold text-white mb-1"><i class="fas fa-magnifying-glass-location text-teal-400 mr-2"></i>Vehículos activos</h3>
+                            <p class="text-sm text-slate-400">Consulta y busca los vehículos que ocupan un espacio en este momento</p>
+                        </div>
+                        <input type="text" id="active-filter" oninput="renderActive()" placeholder="Buscar por placa" class="input-soft p-3 text-sm uppercase" title="Escribe una placa para filtrar la lista">
+                    </div>
+                    <div id="active-list" class="space-y-2"></div>
+                </div>`;
+                renderActive();
+            }
+            if(mod === 'admin-users') {
+                cont.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="soft-panel p-8 lg:col-span-1">
+                        <div class="w-14 h-14 rounded-3xl bg-orange-500/15 text-orange-400 flex items-center justify-center text-xl mb-5"><i class="fas fa-user-plus"></i></div>
+                        <h3 class="text-lg font-bold text-white mb-1">Nuevo usuario</h3>
+                        <p class="text-sm text-slate-400 mb-6">Crea cuentas para el personal o los clientes</p>
+                        <label class="text-xs font-semibold uppercase text-slate-400 mb-2 block">Nombre completo</label>
+                        <input type="text" id="nu-name" placeholder="Ej: Ana Gómez" class="input-soft w-full p-3 mb-4 text-sm">
+                        <label class="text-xs font-semibold uppercase text-slate-400 mb-2 block">Usuario</label>
+                        <input type="text" id="nu-user" placeholder="Ej: agomez" class="input-soft w-full p-3 mb-4 text-sm">
+                        <label class="text-xs font-semibold uppercase text-slate-400 mb-2 block">Rol</label>
+                        <select id="nu-role" class="input-soft w-full p-3 mb-6 text-sm">
+                            <option value="Cliente">Cliente / Conductor</option>
+                            <option value="Operador">Operador / Cajero</option>
+                            <option value="Admin">Administrador</option>
+                        </select>
+                        <button onclick="adminAddUser()" class="btn-accent w-full p-3 text-sm">Crear usuario</button>
+                    </div>
+                    <div class="soft-panel p-8 lg:col-span-2">
+                        <h3 class="text-lg font-bold text-white mb-1"><i class="fas fa-users-gear text-teal-400 mr-2"></i>Usuarios registrados</h3>
+                        <p class="text-sm text-slate-400 mb-6">Activa, desactiva o elimina cuentas del sistema</p>
+                        <div id="users-list" class="space-y-2"></div>
+                    </div>
+                </div>`;
+                renderUsersList();
+            }
+            if(mod === 'admin-clients') {
+                cont.innerHTML = `<div class="soft-panel p-8 md:p-10">
+                    <div class="flex flex-wrap gap-3 justify-between items-center mb-6">
+                        <div>
+                            <h3 class="text-lg font-bold text-white mb-1"><i class="fas fa-id-card text-teal-400 mr-2"></i>Clientes registrados</h3>
+                            <p class="text-sm text-slate-400">Información guardada por separado para cada cliente: vehículos y actividad</p>
+                        </div>
+                        <input type="text" id="clients-filter" oninput="renderClients()" placeholder="Buscar por usuario o placa" class="input-soft p-3 text-sm">
+                    </div>
+                    <div id="clients-list" class="space-y-3"></div>
+                </div>`;
+                renderClients();
+            }
+            if(mod === 'help') {
+                cont.innerHTML = `<div class="max-w-3xl mx-auto space-y-6">
+                    <div class="soft-panel p-8">
+                        <h3 class="text-lg font-bold text-white mb-1"><i class="fas fa-circle-question text-teal-400 mr-2"></i>Manual rápido</h3>
+                        <p class="text-sm text-slate-400 mb-6">Guía breve de las tareas más comunes según tu rol</p>
+                        <div class="space-y-4 text-sm">
+                            <div class="flex gap-4 items-start bg-[#223049] rounded-xl p-4">
+                                <span class="w-9 h-9 rounded-lg bg-teal-500/15 text-teal-400 flex items-center justify-center shrink-0"><i class="fas fa-qrcode"></i></span>
+                                <div><p class="font-semibold text-white">Registrar el ingreso de un vehículo</p><p class="text-slate-400 mt-1">Ve a <b>Validar placa</b>, escribe la placa y elige el tipo de vehículo. Si tiene reserva, pulsa <b>Permitir acceso</b>; si no, asígnale un espacio libre.</p></div>
+                            </div>
+                            <div class="flex gap-4 items-start bg-[#223049] rounded-xl p-4">
+                                <span class="w-9 h-9 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0"><i class="fas fa-right-from-bracket"></i></span>
+                                <div><p class="font-semibold text-white">Registrar la salida y cobrar</p><p class="text-slate-400 mt-1">En <b>Resumen</b> o <b>Vehículos activos</b>, pulsa <b>Liberar</b> sobre el vehículo. Revisa el tiempo y total calculados, elige el método de pago y confirma con <b>Cobrar y liberar</b>.</p></div>
+                            </div>
+                            <div class="flex gap-4 items-start bg-[#223049] rounded-xl p-4">
+                                <span class="w-9 h-9 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0"><i class="fas fa-magnifying-glass-location"></i></span>
+                                <div><p class="font-semibold text-white">Consultar disponibilidad y vehículos</p><p class="text-slate-400 mt-1">El <b>Resumen</b> muestra los espacios libres, ocupados y reservados en tiempo real. Usa <b>Vehículos activos</b> para buscar una placa concreta.</p></div>
+                            </div>
+                            ${role === 'Admin' ? `<div class="flex gap-4 items-start bg-[#223049] rounded-xl p-4">
+                                <span class="w-9 h-9 rounded-lg bg-orange-500/15 text-orange-400 flex items-center justify-center shrink-0"><i class="fas fa-sliders"></i></span>
+                                <div><p class="font-semibold text-white">Administrar tarifas, usuarios y espacios</p><p class="text-slate-400 mt-1">En <b>Configuración</b> ajustas la capacidad y las tarifas; en <b>Usuarios</b> gestionas las cuentas; en <b>Reportes</b> ves ingresos y ocupación.</p></div>
+                            </div>` : ''}
+                        </div>
+                    </div>
+                    <div class="soft-panel p-8">
+                        <h3 class="text-sm font-bold text-white mb-4"><i class="fas fa-triangle-exclamation text-amber-400 mr-2"></i>¿Qué significan los mensajes de error?</h3>
+                        <ul class="space-y-2 text-sm text-slate-400">
+                            <li><b class="text-slate-200">Placa inválida:</b> la placa debe tener al menos 5 caracteres.</li>
+                            <li><b class="text-slate-200">Espacio no disponible:</b> el lugar está ocupado, reservado o en mantenimiento.</li>
+                            <li><b class="text-slate-200">Sin reserva:</b> la placa no tiene reserva; asigna un espacio manualmente.</li>
+                            <li><b class="text-slate-200">Reserva expirada:</b> pasaron 15 minutos sin confirmar la llegada.</li>
+                        </ul>
+                    </div>
+                    <div class="soft-panel p-8 text-sm text-slate-400">
+                        <h3 class="text-sm font-bold text-white mb-2"><i class="fas fa-headset text-teal-400 mr-2"></i>Soporte</h3>
+                        <p>¿Necesitas ayuda? Llama al <b class="text-slate-200">1 (234) 567-891</b> o escribe a <b class="text-slate-200">soporte@sheilerpark.co</b>.</p>
+                    </div>
+                </div>`;
+            }
+        }
+
+        /* ------- Vehículos activos (consulta y búsqueda) ------- */
+        function renderActive() {
+            const list = document.getElementById('active-list');
+            if(!list) return;
+            const f = (document.getElementById('active-filter')?.value || '').toUpperCase();
+            const busy = slots.filter(s => s.status === 'busy' && (!f || (s.plate || '').includes(f)));
+            list.innerHTML = busy.length ? busy.map(s => `
+                <div data-busy-start="${s.startTime || Date.now()}" data-type="${s.type || 'auto'}" class="flex flex-wrap gap-3 justify-between items-center bg-[#223049] rounded-xl p-4">
+                    <div class="flex items-center gap-3">
+                        <span class="w-9 h-9 rounded-lg bg-red-500/15 text-red-400 flex items-center justify-center text-xs font-bold">${s.id}</span>
+                        <span class="font-semibold text-white">${s.plate || 'Sin placa'} <span class="text-[11px] text-slate-400 font-normal">· ${s.type === 'moto' ? 'Moto' : 'Auto'}</span>
+                            ${s.prepaid ? '<span class="ml-2 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide bg-emerald-500/15 text-emerald-300 px-2 py-1 rounded-md"><i class="fas fa-circle-check"></i> Pagado en línea</span>' : ''}
+                        </span>
+                    </div>
+                    <div class="flex items-center gap-6 text-sm">
+                        ${s.prepaid
+                            ? `<span class="text-emerald-300 font-semibold"><i class="fas fa-ticket-simple mr-1"></i>Ticket requerido</span>
+                               <button onclick="opRelease(${s.id})" class="bg-teal-500 text-white px-4 py-2 rounded-lg text-xs font-semibold hover:bg-teal-600 transition">Validar ticket y liberar</button>`
+                            : `<span class="text-amber-300 font-semibold"><i class="fas fa-clock mr-1"></i><span data-timer>00:00:00</span></span>
+                               <span class="text-teal-300 font-semibold" data-cost>$0</span>
+                               <button onclick="opRelease(${s.id})" class="bg-emerald-500 text-white px-4 py-2 rounded-lg text-xs font-semibold hover:bg-emerald-600 transition">Cobrar y liberar</button>`}
+                    </div>
+                </div>`).join('') : `<p class="text-sm text-slate-500 text-center py-6">${f ? 'Ninguna placa activa coincide con la búsqueda.' : 'No hay vehículos ocupando espacios.'}</p>`;
+            updateLiveTimers();
+        }
+
+        /* ------- Gestión de usuarios (rol Administrador) ------- */
+        function renderUsersList() {
+            const list = document.getElementById('users-list');
+            if(!list) return;
+            const meta = {
+                Admin:    { icon: 'fa-user-shield', color: 'text-orange-400', bg: 'bg-orange-500/15' },
+                Operador: { icon: 'fa-headset',     color: 'text-teal-400',   bg: 'bg-teal-500/15' },
+                Cliente:  { icon: 'fa-user',         color: 'text-slate-300',  bg: 'bg-slate-500/15' }
+            };
+            list.innerHTML = users.length ? users.map(u => {
+                const m = meta[u.role] || meta.Cliente;
+                return `<div class="flex flex-wrap gap-3 justify-between items-center bg-[#223049] rounded-xl p-4">
+                    <div class="flex items-center gap-3">
+                        <span class="w-9 h-9 rounded-lg ${m.bg} ${m.color} flex items-center justify-center"><i class="fas ${m.icon}"></i></span>
+                        <div>
+                            <p class="font-semibold text-white text-sm">${u.name} <span class="text-[11px] text-slate-400 font-normal">· @${u.user}</span></p>
+                            <p class="text-xs text-slate-500">${u.role} · ${u.active ? '<span class="text-emerald-400">Activo</span>' : '<span class="text-red-400">Inactivo</span>'}</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button onclick="adminToggleUser(${u.id})" class="px-3 py-2 rounded-lg text-xs font-semibold ${u.active ? 'bg-amber-500/15 text-amber-300 hover:bg-amber-500/25' : 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'} transition" title="${u.active ? 'Desactivar cuenta' : 'Activar cuenta'}">${u.active ? 'Desactivar' : 'Activar'}</button>
+                        <button onclick="adminDeleteUser(${u.id})" class="px-3 py-2 rounded-lg text-xs font-semibold bg-red-500/15 text-red-300 hover:bg-red-500/25 transition" title="Eliminar cuenta"><i class="fas fa-trash"></i></button>
+                    </div>
+                </div>`;
+            }).join('') : `<p class="text-sm text-slate-500 text-center py-6">No hay usuarios registrados.</p>`;
+        }
+        function adminAddUser() {
+            const name = document.getElementById('nu-name').value.trim();
+            const user = document.getElementById('nu-user').value.trim().toLowerCase();
+            const uRole = document.getElementById('nu-role').value;
+            if(!name) return toast("Escribe el nombre del usuario");
+            if(user.length < 3) return toast("El usuario debe tener al menos 3 caracteres");
+            if(users.some(u => u.user === user)) return toast("Ese usuario ya existe");
+            users.push({ id: Date.now(), name, user, role: uRole, active: true });
+            saveState(); renderUsersList();
+            document.getElementById('nu-name').value = "";
+            document.getElementById('nu-user').value = "";
+            toast("Usuario creado con éxito");
+        }
+        function adminToggleUser(id) {
+            const u = users.find(x => x.id === id);
+            if(!u) return;
+            u.active = !u.active;
+            saveState(); renderUsersList();
+            toast(u.active ? "Cuenta activada" : "Cuenta desactivada");
+        }
+        function adminDeleteUser(id) {
+            if(!confirm("¿Eliminar este usuario del sistema?")) return;
+            users = users.filter(x => x.id !== id);
+            saveState(); renderUsersList();
+            toast("Usuario eliminado");
+        }
+
+        /* ------- Ficha de cada cliente (rol Administrador) ------- */
+        function renderClients() {
+            const list = document.getElementById('clients-list');
+            if(!list) return;
+            const f = (document.getElementById('clients-filter')?.value || '').toUpperCase();
+            const entries = Object.entries(clientData);
+            const filtered = entries.filter(([user, data]) => {
+                if(!f) return true;
+                const plates = (data.vehicles || []).map(v => v.plate).join(' ');
+                return (user.toUpperCase().includes(f) || (data.name||'').toUpperCase().includes(f) || plates.includes(f));
+            });
+            list.innerHTML = filtered.length ? filtered.map(([user, data]) => {
+                const vehicles = data.vehicles || [];
+                const plates = vehicles.map(v => v.plate);
+                const moves = history.filter(h => plates.includes(h.plate));
+                const gastado = moves.filter(h => h.cost).reduce((a,b) => a + b.cost, 0);
+                const activo = slots.find(s => s.status === 'busy' && plates.includes(s.plate));
+                const reserva = reservations.find(r => plates.includes(r.plate));
+                const estado = activo
+                    ? `<span class="text-red-300"><i class="fas fa-car mr-1"></i>Parqueado · Espacio ${activo.id}</span>`
+                    : (reserva ? `<span class="text-amber-300"><i class="fas fa-bookmark mr-1"></i>Reserva · Espacio ${reserva.slotId}</span>`
+                    : `<span class="text-slate-500"><i class="fas fa-circle mr-1 text-[8px]"></i>Sin actividad ahora</span>`);
+                return `<div class="bg-[#223049] rounded-2xl p-5">
+                    <div class="flex flex-wrap gap-3 justify-between items-start mb-4">
+                        <div class="flex items-center gap-3">
+                            <span class="w-11 h-11 rounded-xl bg-teal-500/15 text-teal-300 flex items-center justify-center"><i class="fas fa-user"></i></span>
+                            <div>
+                                <p class="font-semibold text-white text-sm">${data.name || user} <span class="text-[11px] text-slate-400 font-normal">· @${user}</span></p>
+                                <p class="text-xs text-slate-500">${vehicles.length} vehículo(s) · ${moves.length} movimiento(s) · Total pagado $${gastado.toLocaleString()}</p>
+                            </div>
+                        </div>
+                        <span class="text-xs font-semibold">${estado}</span>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        ${vehicles.length ? vehicles.map(v => `<span class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#1a2438] text-teal-300 text-xs font-semibold"><i class="fas ${v.type === 'moto' ? 'fa-motorcycle' : 'fa-car-side'}"></i> ${v.plate} <span class="text-[10px] text-slate-400 font-normal">· ${v.color}</span></span>`).join('') : '<span class="text-xs text-slate-500">Este cliente aún no ha registrado vehículos.</span>'}
+                    </div>
+                </div>`;
+            }).join('') : `<p class="text-sm text-slate-500 text-center py-6">${f ? 'Ningún cliente coincide con la búsqueda.' : 'Todavía no hay clientes registrados. Ingresa como cliente para crear uno.'}</p>`;
+        }
+
+        function renderHistory() {
+            const list = document.getElementById('hist-list');
+            if(!list) return;
+            const f = (document.getElementById('hist-filter')?.value || '').toUpperCase();
+            const items = history.filter(h => !f || (h.plate || '').includes(f));
+            const meta = {
+                entrada:  { icon: 'fa-right-to-bracket', color: 'text-emerald-400', bg: 'bg-emerald-500/15', label: 'Entrada' },
+                salida:   { icon: 'fa-right-from-bracket', color: 'text-red-400', bg: 'bg-red-500/15', label: 'Salida' },
+                reserva:  { icon: 'fa-bookmark', color: 'text-amber-400', bg: 'bg-amber-500/15', label: 'Reserva' }
+            };
+            list.innerHTML = items.length ? items.map(h => {
+                const m = meta[h.type] || meta.reserva;
+                return `<div class="flex flex-wrap gap-3 justify-between items-center bg-[#223049] rounded-xl p-4">
+                    <div class="flex items-center gap-3">
+                        <span class="w-9 h-9 rounded-lg ${m.bg} ${m.color} flex items-center justify-center"><i class="fas ${m.icon}"></i></span>
+                        <div>
+                            <p class="font-semibold text-white text-sm">${m.label} · ${h.plate}</p>
+                            <p class="text-xs text-slate-500">Espacio ${h.slotId} · ${new Date(h.time).toLocaleString()}${h.note ? ' · ' + h.note : ''}</p>
+                        </div>
+                    </div>
+                    ${h.cost ? `<span class="text-teal-300 font-semibold text-sm">$${h.cost.toLocaleString()}</span>` : ''}
+                </div>`;
+            }).join('') : `<p class="text-sm text-slate-500 text-center py-6">Sin movimientos registrados.</p>`;
+        }
+
+        function opFilterPlates() {
+            const box = document.getElementById('op-suggestions');
+            if(!box) return;
+            const q = (document.getElementById('op-search-in')?.value || '').toUpperCase();
+            const plates = [...new Set([...myVehicles.map(v=>v.plate), ...reservations.map(r=>r.plate), ...slots.filter(s=>s.plate).map(s=>s.plate)])];
+            const matches = plates.filter(p => p && (!q || p.includes(q))).slice(0, 6);
+            box.innerHTML = matches.map(p => `<button onclick="document.getElementById('op-search-in').value='${p}';opFilterPlates();" class="px-3 py-1.5 rounded-full bg-[#223049] text-teal-300 text-xs font-semibold hover:bg-teal-500/20 transition">${p}</button>`).join('');
+        }
+
+        function opSearchPlate() {
+            const p = document.getElementById('op-search-in').value.toUpperCase();
+            if(!p) return;
+            const res = reservations.find(r => r.plate === p);
+            const area = document.getElementById('op-res-area'); area.classList.remove('hide');
+            if(res) {
+                area.innerHTML = `<div class="bg-emerald-500/10 border border-emerald-500/25 rounded-2xl p-8"><h4 class="text-emerald-400 font-bold mb-4"><i class="fas fa-circle-check mr-2"></i>Reserva encontrada · Espacio ${res.slotId}</h4><button onclick="opConfirmRes(${res.slotId})" class="btn-primary w-full p-4 text-sm">Permitir acceso</button></div>`;
+            } else {
+                manualType = 'auto';
+                area.innerHTML = `<div class="bg-orange-500/10 border border-orange-500/25 rounded-2xl p-8">
+                    <p class="text-orange-300 font-semibold mb-5 text-sm"><i class="fas fa-triangle-exclamation mr-2"></i>Sin reserva. Registra el ingreso manualmente:</p>
+                    <p class="text-xs font-semibold uppercase text-slate-400 mb-2 text-left">Tipo de vehículo</p>
+                    <div class="grid grid-cols-2 gap-3 mb-6">
+                        <button id="mt-auto" onclick="setManualType('auto')" class="p-3 rounded-xl border-2 border-emerald-500/40 text-emerald-400 text-sm font-semibold transition"><i class="fas fa-car-side mr-1"></i> Automóvil</button>
+                        <button id="mt-moto" onclick="setManualType('moto')" class="p-3 rounded-xl border-2 border-[#2b3a56] text-slate-300 text-sm font-semibold transition"><i class="fas fa-motorcycle mr-1"></i> Moto</button>
+                    </div>
+                    <p class="text-xs font-semibold uppercase text-slate-400 mb-2 text-left">Asignar espacio libre</p>
+                    <div class="grid grid-cols-6 gap-2">${slots.filter(s=>s.status==='free' && !reservations.find(r=>r.slotId==s.id)).map(s=>`<button onclick="opConfirmMan(${s.id},'${p}')" class="p-3 rounded-xl border-2 border-emerald-500/40 text-emerald-400 text-sm font-bold hover:bg-emerald-500 hover:text-white transition">${s.id}</button>`).join('')}</div>
+                </div>`;
+            }
+        }
+        function setManualType(t) {
+            manualType = t;
+            const a = document.getElementById('mt-auto'), m = document.getElementById('mt-moto');
+            if(!a || !m) return;
+            [['auto',a],['moto',m]].forEach(([key,btn]) => {
+                const on = key === t;
+                btn.classList.toggle('border-emerald-500/40', on);
+                btn.classList.toggle('text-emerald-400', on);
+                btn.classList.toggle('border-[#2b3a56]', !on);
+                btn.classList.toggle('text-slate-300', !on);
+            });
+        }
+
+        function opConfirmRes(id) {
+            const s = slots.find(x=>x.id==id);
+            const res = reservations.find(r=>r.slotId==id);
+            s.status="busy"; s.plate = res ? res.plate : s.plate; s.type = res ? res.type : s.type; s.startTime = Date.now();
+            // Conservamos el pago en línea de la reserva en el espacio ocupado
+            s.prepaid = res ? !!res.prepaid : false; s.ticket = res ? (res.ticket || null) : null; s.paidAmount = res ? (res.paidAmount || 0) : 0; s.payMethod = res ? (res.payMethod || null) : null;
+            logMovement('entrada', s.plate, id, 0, res && res.prepaid ? 'Ingreso · prepagado ticket ' + res.ticket : '');
+            reservations = reservations.filter(r=>r.slotId!=id);
+            toast("Acceso concedido"); saveState(); loadStaffModule('dashboard');
+        }
+        function opConfirmMan(id, plate) {
+            const s=slots.find(x=>x.id==id); s.status="busy"; s.plate=plate; s.type = manualType || 'auto'; s.startTime = Date.now();
+            logMovement('entrada', plate, id, 0, (s.type === 'moto' ? 'Moto' : 'Auto') + ' · ingreso manual');
+            toast("Ingreso registrado en el espacio " + id); saveState(); loadStaffModule('dashboard');
+        }
+
+        /* Cobro y liberación (R2.4, R2.5, R3.3) */
+        function opRelease(id) {
+            const s = slots.find(x=>x.id==id);
+            // Si ya pagó en línea, NO se cobra otra vez: se pide validar el ticket
+            if(s.prepaid) return openValidate(id);
+            const cost = s.startTime ? elapsedCost(s.startTime, s.type) : (rates[s.type] || rates.auto);
+            const dur = s.startTime ? fmtDuration(Date.now() - s.startTime) : '00:00:00';
+            pendingRelease = { slotId: id, plate: s.plate, cost, dur, method: 'Efectivo' };
+            document.getElementById('rc-plate').innerText = s.plate || '--';
+            document.getElementById('rc-slot').innerText = id;
+            document.getElementById('rc-time').innerText = dur;
+            document.getElementById('rc-total').innerText = '$' + cost.toLocaleString();
+            // reset selección de método
+            document.querySelectorAll('.pay-method').forEach((b,i)=>{
+                b.classList.toggle('border-emerald-500/40', i===0);
+                b.classList.toggle('text-emerald-400', i===0);
+                b.classList.toggle('border-[#2b3a56]', i!==0);
+                b.classList.toggle('text-slate-300', i!==0);
+            });
+            document.getElementById('modal-receipt').classList.remove('hide');
+        }
+        function setPayMethod(method, btn) {
+            if(pendingRelease) pendingRelease.method = method;
+            document.querySelectorAll('.pay-method').forEach(b=>{
+                b.classList.remove('border-emerald-500/40','text-emerald-400');
+                b.classList.add('border-[#2b3a56]','text-slate-300');
+            });
+            btn.classList.add('border-emerald-500/40','text-emerald-400');
+            btn.classList.remove('border-[#2b3a56]','text-slate-300');
+        }
+        function confirmReceipt() {
+            if(!pendingRelease) return closeReceipt();
+            const { slotId, plate, cost, method } = pendingRelease;
+            const s = slots.find(x=>x.id==slotId);
+            logMovement('salida', plate, slotId, cost, 'Pago ' + method);
+            s.status = "free"; s.plate = ""; s.type = "auto"; s.startTime = null;
+            pendingRelease = null;
+            closeReceipt(); saveState(); loadStaffModule('dashboard');
+            toast("Cobro registrado (" + method + ") y espacio liberado");
+        }
+        function closeReceipt() { document.getElementById('modal-receipt').classList.add('hide'); }
+
+        /* --- Validación de ticket para salida prepagada (el operador NO vuelve a cobrar) --- */
+        function openValidate(id) {
+            const s = slots.find(x=>x.id==id);
+            pendingValidate = { slotId: id, plate: s.plate, ticket: s.ticket, paidAmount: s.paidAmount || 0 };
+            document.getElementById('vt-plate').innerText = s.plate || '--';
+            document.getElementById('vt-slot').innerText = id;
+            document.getElementById('vt-paid').innerText = '$' + (s.paidAmount || 0).toLocaleString();
+            const input = document.getElementById('vt-input');
+            input.value = '';
+            document.getElementById('vt-msg').classList.add('hide');
+            document.getElementById('modal-validate').classList.remove('hide');
+            setTimeout(() => input.focus(), 50);
+        }
+        function confirmValidate() {
+            if(!pendingValidate) return closeValidate();
+            const entered = document.getElementById('vt-input').value.trim();
+            if(entered !== String(pendingValidate.ticket)) {
+                document.getElementById('vt-msg').classList.remove('hide');
+                return;
+            }
+            const { slotId, plate, ticket, paidAmount } = pendingValidate;
+            const s = slots.find(x=>x.id==slotId);
+            // Salida sin cobro adicional: ya estaba pagado en línea
+            logMovement('salida', plate, slotId, 0, 'Salida prepagada · ticket ' + ticket + ' validado ($' + paidAmount.toLocaleString() + ' pagados en línea)');
+            s.status = "free"; s.plate = ""; s.type = "auto"; s.startTime = null;
+            s.prepaid = false; s.ticket = null; s.paidAmount = 0; s.payMethod = null;
+            pendingValidate = null;
+            closeValidate(); saveState(); loadStaffModule('dashboard');
+            toast("Ticket válido. Salida permitida sin cobro adicional");
+        }
+        function closeValidate() { document.getElementById('modal-validate').classList.add('hide'); }
+
+        function renderMaintMap() { document.getElementById('maint-map').innerHTML = slots.map(s => `<button onclick="toggleMaint(${s.id})" class="h-14 rounded-xl font-bold text-sm transition ${s.status === 'maint' ? 'bg-red-500 text-white' : 'bg-[#223049] text-slate-400 hover:bg-[#2b3a56]'}">${s.id}</button>`).join(''); }
+        function toggleMaint(id) { const s = slots.find(x => x.id == id); if(s.status==='busy') return toast("El espacio está ocupado"); s.status = s.status === 'maint' ? 'free' : 'maint'; renderMaintMap(); saveState(); toast("Estado actualizado"); }
+        function adminChangeSlots() { totalSlots = parseInt(document.getElementById('admin-new-total').value); syncSlots(); saveState(); toast("Capacidad actualizada"); loadStaffModule('dashboard'); }
+        function adminChangeRates() {
+            rates.auto = parseInt(document.getElementById('rate-auto').value) || rates.auto;
+            rates.moto = parseInt(document.getElementById('rate-moto').value) || rates.moto;
+            saveState(); toast("Tarifas actualizadas");
+        }
+        function custSearchRes() { const p = document.getElementById('search-plate').value.toUpperCase(); const res = reservations.find(r => r.plate === p); const busy = slots.find(s => s.plate === p && s.status === 'busy'); const info = document.getElementById('search-res-info'); info.classList.remove('hide'); if(res) { info.innerHTML = `<i class="fas fa-circle-check text-emerald-400 mr-2"></i>La placa ${p} tiene reservado el espacio ${res.slotId}`; } else if(busy) { info.innerHTML = `<i class="fas fa-car text-red-400 mr-2"></i>La placa ${p} está parqueada en el espacio ${busy.id}`; } else { info.innerHTML = `<i class="fas fa-circle-info text-slate-400 mr-2"></i>No encontramos reservas para esa placa`; } }
+        function custCanRes() { if(confirm("¿Deseas cancelar tu reserva?")) { const r = myReservation(); if(r) { logMovement('salida', r.plate, r.slotId, 0, 'Reserva cancelada'); reservations = reservations.filter(x => x !== r); } refreshCustomer(); toast("Reserva cancelada"); } }
+        function closeModal() { document.getElementById('modal-reserve').classList.add('hide'); }
+        function resetAll() { if(confirm("¿Reiniciar todo el sistema?")) { __sessionState = null; slots=[]; reservations=[]; myVehicles=[]; history=[]; totalSlots=40; rates={auto:5000,moto:2500}; clientData={}; currentUser=null; users=[{ id:1, user:'admin', name:'Administrador General', role:'Admin', active:true },{ id:2, user:'operador', name:'Operador de Caja', role:'Operador', active:true },{ id:3, user:'cliente', name:'Cliente Demo', role:'Cliente', active:true }]; syncSlots(); saveState(); toast("Sistema reiniciado"); } }
+        function toast(msg) { const t = document.getElementById('toast'); t.innerText = msg; t.classList.remove('hide'); t.classList.remove('toast-in'); void t.offsetWidth; t.classList.add('toast-in'); clearTimeout(window._tt); window._tt = setTimeout(() => t.classList.add('hide'), 3000); }
+
+        init();
+    </script>
+</body>
+</html>
